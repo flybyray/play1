@@ -261,6 +261,10 @@
         <echo message="Testing development lifecycle (wait ...)" />
 
         <exec executable="python" failonerror="true">
+            <arg value="${basedir}/../samples-and-tests/i-am-a-developer/tests2.py" />
+        </exec>
+
+    	<exec executable="python" failonerror="true">
             <arg value="${basedir}/../samples-and-tests/i-am-a-developer/tests.py" />
         </exec>
 
