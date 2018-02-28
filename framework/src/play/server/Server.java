@@ -1,20 +1,24 @@
 package play.server;
 
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.ChannelException;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.logging.LogLevel;
+import io.netty.handler.logging.LoggingHandler;
+import play.Logger;
+import play.Play;
+import play.Play.Mode;
+import play.libs.IO;
+import play.server.ssl.SslHttpServerInitializer;
+
 import java.io.File;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.Properties;
-import java.util.concurrent.Executors;
-
-import org.jboss.netty.bootstrap.ServerBootstrap;
-import org.jboss.netty.channel.ChannelException;
-import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
-import play.Logger;
-import play.Play;
-import play.Play.Mode;
-import play.libs.IO;
-import play.server.ssl.SslHttpServerPipelineFactory;
 
 public class Server {
 
@@ -63,16 +67,21 @@ public class Server {
             Logger.error(e, "Could not understand https.address");
             Play.fatalServerErrorOccurred();
         }
-        ServerBootstrap bootstrap = new ServerBootstrap(new NioServerSocketChannelFactory(
-                Executors.newCachedThreadPool(), Executors.newCachedThreadPool())
-        );
+        EventLoopGroup bossGroup = new NioEventLoopGroup();
+        EventLoopGroup workerGroup = new NioEventLoopGroup();
         try {
             if (httpPort != -1) {
-                bootstrap.setPipelineFactory(new HttpServerPipelineFactory());
-
-                bootstrap.bind(new InetSocketAddress(address, httpPort));
-                bootstrap.setOption("child.tcpNoDelay", true);
-
+                ServerBootstrap bootstrap = new ServerBootstrap();
+                try {
+                    bootstrap.group(bossGroup, workerGroup)
+                            .channel(NioServerSocketChannel.class)
+//                            .handler(new LoggingHandler(LogLevel.INFO))
+                            .childHandler(new HttpServerInitializer())
+    //                        .option(ChannelOption.TCP_NODELAY, true)
+                            .bind(new InetSocketAddress(address, httpPort)).sync();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
                 if (Play.mode == Mode.DEV) {
                     if (address == null) {
                         Logger.info("Listening for HTTP on port %s (Waiting a first request to start) ...", httpPort);
@@ -94,15 +103,21 @@ public class Server {
             Play.fatalServerErrorOccurred();
         }
 
-        bootstrap = new ServerBootstrap(new NioServerSocketChannelFactory(
-                Executors.newCachedThreadPool(), Executors.newCachedThreadPool())
-        );
-
+        bossGroup = new NioEventLoopGroup();
+        workerGroup = new NioEventLoopGroup();
         try {
             if (httpsPort != -1) {
-                bootstrap.setPipelineFactory(new SslHttpServerPipelineFactory());
-                bootstrap.bind(new InetSocketAddress(secureAddress, httpsPort));
-                bootstrap.setOption("child.tcpNoDelay", true);
+                ServerBootstrap bootstrap = new ServerBootstrap();
+                try {
+                    bootstrap.group(bossGroup, workerGroup)
+                            .channel(NioServerSocketChannel.class)
+                            .handler(new LoggingHandler(LogLevel.TRACE))
+                            .childHandler(new SslHttpServerInitializer())
+    //                        .option(ChannelOption.TCP_NODELAY, true)
+                            .bind(new InetSocketAddress(address, httpsPort)).sync();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
 
                 if (Play.mode == Mode.DEV) {
                     if (secureAddress == null) {

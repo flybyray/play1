@@ -1,20 +1,30 @@
 package play.server;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.FullHttpMessage;
+import io.netty.handler.codec.http.HttpContent;
+import io.netty.handler.codec.http.HttpUtil;
+import io.netty.handler.codec.http.LastHttpContent;
 import org.apache.commons.io.IOUtils;
-import org.jboss.netty.buffer.ChannelBufferInputStream;
-import org.jboss.netty.channel.*;
-import org.jboss.netty.handler.codec.http.HttpChunk;
-import org.jboss.netty.handler.codec.http.HttpHeaders;
-import org.jboss.netty.handler.codec.http.HttpMessage;
 import play.Play;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.util.List;
 import java.util.UUID;
 
-public class StreamChunkAggregator extends SimpleChannelUpstreamHandler {
+import static io.netty.handler.codec.http.HttpHeaderNames.*;
+import static io.netty.handler.codec.http.HttpHeaderValues.CHUNKED;
 
-    private volatile HttpMessage currentMessage;
+public class StreamChunkAggregator extends SimpleChannelInboundHandler<FullHttpMessage> {
+
+    private volatile FullHttpMessage currentMessage;
     private volatile OutputStream out;
     private static final int maxContentLength = Integer.valueOf(Play.configuration.getProperty("play.netty.maxContentLength", "-1"));
     private volatile File file;
@@ -22,59 +32,62 @@ public class StreamChunkAggregator extends SimpleChannelUpstreamHandler {
     /**
      * Creates a new instance.
      */
-    public StreamChunkAggregator() { }
+    public StreamChunkAggregator() {
+    }
 
     @Override
-    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-        Object msg = e.getMessage();
-        if (!(msg instanceof HttpMessage) && !(msg instanceof HttpChunk)) {
-            ctx.sendUpstream(e);
+    protected void channelRead0(ChannelHandlerContext ctx, FullHttpMessage httpMessage) throws Exception {
+        if (!(httpMessage instanceof FullHttpMessage) && !(httpMessage instanceof HttpContent)) {
+            ctx.fireChannelRead(httpMessage);
             return;
         }
 
-        HttpMessage currentMessage = this.currentMessage;
+        FullHttpMessage currentMessage = this.currentMessage;
         File localFile = this.file;
         if (currentMessage == null) {
-            HttpMessage m = (HttpMessage) msg;
-            if (m.isChunked()) {
+            if (HttpUtil.isTransferEncodingChunked(httpMessage)) {
                 String localName = UUID.randomUUID().toString();
                 // A chunked message - remove 'Transfer-Encoding' header,
                 // initialize the cumulative buffer, and wait for incoming chunks.
-                List<String> encodings = m.headers().getAll(HttpHeaders.Names.TRANSFER_ENCODING);
-                encodings.remove(HttpHeaders.Values.CHUNKED);
+                List<String> encodings = httpMessage.headers().getAll(TRANSFER_ENCODING);
+                encodings.remove(CHUNKED);
                 if (encodings.isEmpty()) {
-                    m.headers().remove(HttpHeaders.Names.TRANSFER_ENCODING);
+                    httpMessage.headers().remove(TRANSFER_ENCODING);
                 }
-                this.currentMessage = m;
+                this.currentMessage = httpMessage;
                 this.file = new File(Play.tmpDir, localName);
                 this.out = new FileOutputStream(file, true);
             } else {
                 // Not a chunked message - pass through.
-                ctx.sendUpstream(e);
+                ctx.fireChannelRead(httpMessage);
             }
         } else {
             // TODO: If less that threshold then in memory
             // Merge the received chunk into the content of the current message.
-            HttpChunk chunk = (HttpChunk) msg;
-            if (maxContentLength != -1 && (localFile.length() > (maxContentLength - chunk.getContent().readableBytes()))) {
-                currentMessage.headers().set(HttpHeaders.Names.WARNING, "play.netty.content.length.exceeded");
+            HttpContent chunk = (HttpContent) httpMessage;
+            if (maxContentLength != -1 && (localFile.length() > (maxContentLength - chunk.content().readableBytes()))) {
+                currentMessage.headers().set(WARNING, "play.netty.content.length.exceeded");
             } else {
-                IOUtils.copyLarge(new ChannelBufferInputStream(chunk.getContent()), this.out);
+                IOUtils.copyLarge(new ByteBufInputStream(chunk.content()), this.out);
 
-                if (chunk.isLast()) {
+                if (chunk instanceof LastHttpContent) {
                     this.out.flush();
                     this.out.close();
 
                     currentMessage.headers().set(
-                            HttpHeaders.Names.CONTENT_LENGTH,
+                            CONTENT_LENGTH,
                             String.valueOf(localFile.length()));
 
-                    currentMessage.setContent(new FileChannelBuffer(localFile));
+                    RandomAccessFile randomAccessFile = new RandomAccessFile(localFile, "r");
+                    int len = Math.toIntExact(randomAccessFile.length());
+                    ByteBuf buffer = Unpooled.buffer(len);
+                    buffer.readBytes(randomAccessFile.getChannel(), 0, len);
+                    currentMessage.content().writeBytes(buffer);
                     this.out = null;
                     this.currentMessage = null;
                     this.file.delete();
                     this.file = null;
-                    Channels.fireMessageReceived(ctx, currentMessage, e.getRemoteAddress());
+                    ctx.pipeline().fireChannelRead(currentMessage);
                 }
             }
         }

@@ -1,6 +1,6 @@
 import static org.junit.Assert.assertEquals;
 
-import org.jboss.netty.buffer.ChannelBufferInputStream;
+import io.netty.buffer.ChannelBufferInputStream;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
