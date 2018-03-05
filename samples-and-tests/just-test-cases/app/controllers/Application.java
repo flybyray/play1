@@ -377,7 +377,7 @@ public class Application extends Controller {
                 }
             }
             catch (Exception e) {
-                Logger.info("Write chunks exception.", e);
+                Logger.error(e,"Write chunks exception.");
             }
             Logger.info("Write chunks stopped.");
         }

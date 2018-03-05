@@ -1,10 +1,6 @@
-import static org.junit.Assert.assertEquals;
-
-import io.netty.buffer.ChannelBufferInputStream;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
-
 import play.libs.WS;
 import play.libs.WS.HttpResponse;
 import play.libs.ws.WSUrlFetch;

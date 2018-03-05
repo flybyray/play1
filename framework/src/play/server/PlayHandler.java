@@ -564,10 +564,17 @@ public class PlayHandler extends SimpleChannelInboundHandler<Object> {
             method = nettyRequest.headers().get("X-HTTP-Method-Override").intern();
         }
 
-        //nettyRequest.content()
-        InputStream body = new ByteBufInputStream(ctx.channel().alloc().buffer());
-        Integer max = Integer.valueOf(Play.configuration.getProperty("play.netty.maxContentLength", "-1"));
-        if (!(max == -1 || body.available() < max)) {
+        InputStream body;
+        if (nettyRequest instanceof HttpContent) {
+            HttpContent request = (HttpContent) nettyRequest;
+            final ByteBufInputStream byteBufInputStream = new ByteBufInputStream(request.content());
+            body = byteBufInputStream;
+            Integer max = Integer.valueOf(Play.configuration.getProperty("play.netty.maxContentLength", "-1"));
+            if (!(max == -1 || body.available() < max)) {
+                byteBufInputStream.close();
+                body = new ByteArrayInputStream(new byte[0]);
+            }
+        } else {
             body = new ByteArrayInputStream(new byte[0]);
         }
 
