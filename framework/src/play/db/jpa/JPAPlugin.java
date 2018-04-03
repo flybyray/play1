@@ -177,6 +177,7 @@ public class JPAPlugin extends PlayPlugin {
         PersistenceUnitInfo persistenceUnitInfo = persistenceUnitInfo(dbName, dbConfig);
         Map<String, Object> configuration = new HashMap<>();
         configuration.put(AvailableSettings.INTERCEPTOR, new HibernateInterceptor());
+        configuration.put(AvailableSettings.CHECK_NULLABILITY, Boolean.FALSE);
 
         return new EntityManagerFactoryBuilderImpl(
                 new PersistenceUnitInfoDescriptor(persistenceUnitInfo), configuration
