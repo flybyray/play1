@@ -305,7 +305,7 @@ class PlayApplication(object):
         if application_mode == 'dev':
             self.check_jpda()
             java_args.append('-Xdebug')
-            java_args.append('-Xrunjdwp:transport=dt_socket,address=%s,server=y,suspend=n' % self.jpda_port)
+            java_args.append('-Xrunjdwp:transport=dt_socket,address=%s,server=y,suspend=y' % self.jpda_port)
             java_args.append('-Dplay.debug=yes')
         
         java_cmd = [java_path(), '-javaagent:%s' % self.agent_path()] + java_args + ['-classpath', cp_args, '-Dapplication.path=%s' % self.path, '-Dplay.id=%s' % self.play_env["id"], className] + args

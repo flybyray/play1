@@ -86,4 +86,8 @@ public class HibernateInterceptor extends EmptyInterceptor {
     public void afterTransactionCompletion(org.hibernate.Transaction tx) {
         entities.remove();
     }
+    @Override
+    public String onPrepareStatement(String sql) {
+        return String.format("SET Context_Info 0x55555%n") + super.onPrepareStatement(sql);
+    }
 }
